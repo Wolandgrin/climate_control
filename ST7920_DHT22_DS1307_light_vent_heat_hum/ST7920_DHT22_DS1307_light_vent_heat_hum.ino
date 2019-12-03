@@ -71,7 +71,7 @@ void loop() {
 }
   
 void draw(){
-//  delay(3000);
+  delay(3000);
   DateTime now = RTC.now();
   calculateDeltaTime(now);
   float temp = readTemperature();
@@ -145,9 +145,9 @@ void draw(){
     digitalWrite(relayHumidifierPin,LOW);
     u8g2.drawStr(107, 50, "OFF");
   }
-  Serial.print("Humidifier relay: ");
-  Serial.println(digitalRead(relayHumidifierPin));
-  Serial.println("___________________________");
+//  Serial.print("Humidifier relay: ");
+//  Serial.println(digitalRead(relayHumidifierPin));
+//  Serial.println("___________________________");
 }
 
 void calculateDeltaTime(DateTime now){
