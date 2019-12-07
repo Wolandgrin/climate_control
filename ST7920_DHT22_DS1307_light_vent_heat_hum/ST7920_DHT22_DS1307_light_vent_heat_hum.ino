@@ -143,7 +143,7 @@ void calculateDeltaTime(DateTime now){
     Serial.println("___________________________");
     if (uptime > 9 and uptime < 100) {
       upshift = 6;
-    } else if (uptime > 99) {
+    } else if (uptime > 99 and uptime < 1000) {
       upshift = 12;
     } else if (uptime > 999) {
       upshift = 22;
