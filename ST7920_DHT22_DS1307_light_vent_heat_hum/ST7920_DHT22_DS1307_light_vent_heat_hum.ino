@@ -4,8 +4,14 @@
 #include <Time.h>
 #include "RTClib.h"
 #define DHTTYPE DHT22
+#define CONTRAST_PIN 12
+#define relayHeatPin 2
+#define relayHumidifierPin 3
+#define relayLightPin 4
+#define relayCooler1Pin 5
+#define relayCooler2Pin 6
 RTC_DS1307 RTC;
-DHT dht(7, DHTTYPE);
+DHT dht(9, DHTTYPE);
 U8G2_ST7920_128X64_1_HW_SPI u8g2(U8G2_R0, /* CS=*/ 10, /* reset=*/ 8);
 //#ifdef U8X8_HAVE_HW_SPI
 //#include <SPI.h>
@@ -22,19 +28,15 @@ unsigned long uptime=0;
 unsigned long oldTime=0;
 int upshift=0;
 int minCheck;
-int relayCooler1Pin=1;
-int relayCooler2Pin=2;
-int relayLightPin=3;
-int relayHeatPin=4;
-int relayHumidifierPin=5;
 
+byte reset_idx  __attribute__ ((section (".noinit")));
 void setup() {
+  Serial.begin(9600);
   dht.begin();
   u8g2.begin();
   u8g2.enableUTF8Print();
   u8g2.setFont(u8g2_font_helvB08_tf);
   u8g2.setColorIndex(1);
-  Serial.begin(9600);
   Wire.begin();
   RTC.adjust(DateTime(__DATE__, __TIME__));
   RTC.begin();
@@ -48,6 +50,21 @@ void setup() {
   {
     Serial.println("RTC is NOT running!");
   }
+// if (MCUSR & 0x02){ Serial.println("reset source bit1: External Reset Flag");}
+// if (MCUSR & 0x01){ Serial.println("reset source bit0: Power-on Reset Flag"); reset_idx=1;}
+// MCUSR=0;
+// if (reset_idx < 1){
+//    digitalWrite(CONTRAST_PIN,1);
+//    u8g2.setContrast(255);
+//    Serial.println("Screen ON");
+//    reset_idx++;
+//  } else {
+//    digitalWrite(CONTRAST_PIN,0);
+//    u8g2.setContrast(0);
+//    Serial.println("Screen OFF");
+//    reset_idx = 0;
+//  }
+//  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void loop() {
