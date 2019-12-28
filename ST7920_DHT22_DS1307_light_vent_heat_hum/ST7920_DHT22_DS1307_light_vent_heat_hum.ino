@@ -4,21 +4,16 @@
 #include <Time.h>
 #include "RTClib.h"
 #define DHTTYPE DHT22
-#define CONTRAST_PIN 12
 #define relayHeatPin 2
-#define relayHumidifierPin 3
-#define relayLightPin 4
-#define relayCooler1Pin 5
-#define relayCooler2Pin 6
+#define relayLightPin 3
+#define relayCooler1Pin 6
+//#define relayCooler2Pin 5
+#define relayHumidifierPin 7
+
 RTC_DS1307 RTC;
 DHT dht(9, DHTTYPE);
 U8G2_ST7920_128X64_1_HW_SPI u8g2(U8G2_R0, /* CS=*/ 10, /* reset=*/ 8);
-//#ifdef U8X8_HAVE_HW_SPI
-//#include <SPI.h>
-//#endif
-//#ifdef U8X8_HAVE_HW_I2C
-//#include <Wire.h>
-//#endif
+
 float temperature;
 float humidity;
 const char DEGREE_SYMBOL[] = {0xB0,'\0'};
@@ -28,8 +23,12 @@ unsigned long uptime=0;
 unsigned long oldTime=0;
 int upshift=0;
 int minCheck;
+float minTemp = 23;
+float maxTemp = 25;
+float minHum = 90;
+float maxHum = 100;
+bool workingMode = false;
 
-byte reset_idx  __attribute__ ((section (".noinit")));
 void setup() {
   Serial.begin(9600);
   dht.begin();
@@ -42,7 +41,7 @@ void setup() {
   RTC.begin();
   minCheck = RTC.now().minute();
   pinMode(relayCooler1Pin, OUTPUT);
-  pinMode(relayCooler2Pin, OUTPUT);
+//  pinMode(relayCooler2Pin, OUTPUT);
   pinMode(relayLightPin, OUTPUT);
   pinMode(relayHeatPin, OUTPUT);
   pinMode(relayHumidifierPin, OUTPUT);
@@ -50,28 +49,12 @@ void setup() {
   {
     Serial.println("RTC is NOT running!");
   }
-// if (MCUSR & 0x02){ Serial.println("reset source bit1: External Reset Flag");}
-// if (MCUSR & 0x01){ Serial.println("reset source bit0: Power-on Reset Flag"); reset_idx=1;}
-// MCUSR=0;
-// if (reset_idx < 1){
-//    digitalWrite(CONTRAST_PIN,1);
-//    u8g2.setContrast(255);
-//    Serial.println("Screen ON");
-//    reset_idx++;
-//  } else {
-//    digitalWrite(CONTRAST_PIN,0);
-//    u8g2.setContrast(0);
-//    Serial.println("Screen OFF");
-//    reset_idx = 0;
-//  }
-//  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void loop() {
   u8g2.firstPage();
   do {
     draw();
-//    delay(3000);
   } while(u8g2.nextPage());
 }
   
@@ -87,55 +70,58 @@ void draw(){
   sprintf(curTime, "%02d:%02d", now.hour(), now.minute());
   u8g2.drawUTF8(2, 10, date);
   u8g2.drawUTF8(46, 10, curTime);
+
+  u8g2.drawUTF8(74, 10, "|UP:");
+  u8g2.setCursor(94, 10);
+  u8g2.print(uptime);
+  u8g2.drawStr(100 + upshift, 10, "M");
+  
   u8g2.drawStr(2, 20, "Temp.:");
   u8g2.setCursor(38, 20);
   u8g2.print(temperature, 1);
   u8g2.drawUTF8(59, 20, DEGREE_SYMBOL);
-  u8g2.drawStr(65, 20, "C");
+  u8g2.drawStr(64, 20, "C");
 
-  u8g2.drawUTF8(73, 10, "|UP:");
-  u8g2.setCursor(94, 10);
-  u8g2.print(uptime);
-  u8g2.drawStr(100 + upshift, 10, "M");
-  u8g2.drawStr(73, 20, "|Vent.:");
-  if (temperature > 29) {
-    u8g2.drawStr(107, 20, "ON");
-    digitalWrite(relayCooler1Pin,HIGH);
-    digitalWrite(relayCooler2Pin,HIGH);
+  u8g2.drawStr(74, 20, "|Hum:");
+  u8g2.setCursor(103, 20);
+  u8g2.print(humidity, 0);
+  u8g2.drawStr(116, 20, "%");
+  
+  u8g2.drawStr(2, 30, "Humidifier:");
+  if (humidity < minHum) {
+    digitalWrite(relayHumidifierPin, HIGH);
+    u8g2.drawStr(56, 30, "ON");
   } else {
-    u8g2.drawStr(107, 20, "OFF");
+    digitalWrite(relayHumidifierPin,LOW);
+    u8g2.drawStr(56, 30, "OFF");
+  }
+  
+  u8g2.drawStr(74, 30, "|Vent.:");
+  if (temperature > maxTemp) {
+    u8g2.drawStr(107, 30, "ON");
+    digitalWrite(relayCooler1Pin,HIGH);
+//    digitalWrite(relayCooler2Pin,HIGH);
+  } else {
+    u8g2.drawStr(107, 30, "OFF");
     digitalWrite(relayCooler1Pin,LOW);
-    digitalWrite(relayCooler2Pin,LOW);
+//    digitalWrite(relayCooler2Pin,LOW);
   }
 
-  u8g2.drawStr(2, 30, "Hum.:");
-  u8g2.setCursor(38, 30);
-  u8g2.print(humidity, 1);
-  u8g2.drawStr(61, 30, "%");
-
-  u8g2.drawStr(73, 30, "|Heat.:");
-  if (temperature < 27) {
-    u8g2.drawStr(107, 30, "ON");
+  u8g2.drawStr(2, 40, "Heating:");
+  if (temperature < minTemp) {
+    u8g2.drawStr(56, 40, "ON");
     digitalWrite(relayHeatPin,HIGH);
  } else {
-    u8g2.drawStr(107, 30, "OFF");
+    u8g2.drawStr(56, 40, "OFF");
    digitalWrite(relayHeatPin,LOW);
  }
-  u8g2.drawUTF8(73, 40, "|Light:");
-  if (now.hour() == 20){
+  u8g2.drawUTF8(74, 40, "|Light :");
+  if (now.minute() > 00 and now.minute() < 15){
     digitalWrite(relayLightPin,HIGH);
     u8g2.drawStr(107, 40, "ON");
   } else {
     digitalWrite(relayLightPin,LOW);
     u8g2.drawStr(107, 40, "OFF");
-  }
-  u8g2.drawStr(73, 50, "|Aqua:");
-  if (humidity < 70) {
-    digitalWrite(relayHumidifierPin, HIGH);
-    u8g2.drawStr(107, 50, "ON");
-  } else {
-    digitalWrite(relayHumidifierPin,LOW);
-    u8g2.drawStr(107, 50, "OFF");
   }
 }
 
@@ -162,8 +148,10 @@ void calculateDeltaTime(DateTime now){
       upshift = 6;
     } else if (uptime > 99 and uptime < 1000) {
       upshift = 12;
-    } else if (uptime > 999) {
-      upshift = 22;
+    } else if (uptime > 999 and uptime < 10000) {
+      upshift = 18;
+    } else if (uptime > 9999) {
+      upshift = 24;
     }
   }
 }
