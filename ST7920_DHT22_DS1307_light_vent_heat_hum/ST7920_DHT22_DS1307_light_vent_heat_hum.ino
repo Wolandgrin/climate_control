@@ -23,10 +23,10 @@ unsigned long uptime=0;
 unsigned long oldTime=0;
 int upshift=0;
 int minCheck;
-float minTemp = 23;
-float maxTemp = 25;
-float minHum = 90;
-float maxHum = 100;
+int minTemp = 23;
+int maxTemp = 26;
+int minHum = 60;
+int maxHum = 90;
 bool workingMode = false;
 
 void setup() {
@@ -89,8 +89,11 @@ void draw(){
   
   u8g2.drawStr(2, 30, "Humidifier:");
   if (humidity < minHum) {
-    digitalWrite(relayHumidifierPin, HIGH);
     u8g2.drawStr(56, 30, "ON");
+    if (digitalRead(relayHumidifierPin) == LOW){
+      digitalWrite(relayHumidifierPin, HIGH); 
+      delay(500);
+    }
   } else {
     digitalWrite(relayHumidifierPin,LOW);
     u8g2.drawStr(56, 30, "OFF");
@@ -99,8 +102,11 @@ void draw(){
   u8g2.drawStr(74, 30, "|Vent.:");
   if (temperature > maxTemp) {
     u8g2.drawStr(107, 30, "ON");
-    digitalWrite(relayCooler1Pin,HIGH);
-//    digitalWrite(relayCooler2Pin,HIGH);
+    if (digitalRead(relayCooler1Pin) == LOW){
+      delay(500);
+      digitalWrite(relayCooler1Pin,HIGH);
+  //    digitalWrite(relayCooler2Pin,HIGH);      
+    }
   } else {
     u8g2.drawStr(107, 30, "OFF");
     digitalWrite(relayCooler1Pin,LOW);
@@ -110,19 +116,41 @@ void draw(){
   u8g2.drawStr(2, 40, "Heating:");
   if (temperature < minTemp) {
     u8g2.drawStr(56, 40, "ON");
-    digitalWrite(relayHeatPin,HIGH);
- } else {
+    if (temperature < minTemp + 3){
+      digitalWrite(relayHeatPin,HIGH);
+      minTemp += 3;
+    }
+  } else {
     u8g2.drawStr(56, 40, "OFF");
    digitalWrite(relayHeatPin,LOW);
- }
+   minTemp -= 3;
+  }
   u8g2.drawUTF8(74, 40, "|Light :");
-  if (now.minute() > 00 and now.minute() < 15){
+  if (now.hour() >= 07 and now.hour() < 17){
     digitalWrite(relayLightPin,HIGH);
     u8g2.drawStr(107, 40, "ON");
   } else {
     digitalWrite(relayLightPin,LOW);
     u8g2.drawStr(107, 40, "OFF");
   }
+
+  u8g2.drawHLine(1, 42, 127);
+  u8g2.drawStr(2, 52, "TEMP");
+  u8g2.drawStr(31, 52, "|Min:");
+  u8g2.setCursor(58, 52);
+  u8g2.print(minTemp);
+  u8g2.drawStr(74, 52, "|Max:");
+  u8g2.setCursor(107, 52);
+  u8g2.print(maxTemp);
+  u8g2.drawStr(2, 62, "HUM");
+  u8g2.drawStr(31, 62, "|Min:");
+  u8g2.setCursor(58, 62);
+  u8g2.print(minHum);
+  u8g2.drawStr(74, 62, "|Max:");
+  u8g2.setCursor(107, 62);
+  u8g2.print(maxHum);
+  u8g2.drawVLine(32, 42, 5);
+  u8g2.drawVLine(75, 42, 5);
 }
 
 void calculateDeltaTime(DateTime now){
