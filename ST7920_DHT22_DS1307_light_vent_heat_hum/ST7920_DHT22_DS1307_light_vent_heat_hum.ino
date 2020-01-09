@@ -2,13 +2,13 @@
 #include <U8g2lib.h>
 #include<Wire.h>
 #include <Time.h>
-#include "RTClib.h"
+#include <RTClib.h>
+
 #define DHTTYPE DHT22
 #define relayHeatPin 2
 #define relayLightPin 3
-#define relayCooler1Pin 6
-//#define relayCooler2Pin 5
-#define relayHumidifierPin 7
+#define cooler1Pin 6
+#define humidifierPin 7
 
 RTC_DS1307 RTC;
 DHT dht(9, DHTTYPE);
@@ -19,15 +19,15 @@ float humidity;
 const char DEGREE_SYMBOL[] = {0xB0,'\0'};
 char date [9];
 char curTime [6];
-unsigned long uptime=0;
-unsigned long oldTime=0;
-int upshift=0;
-int minCheck;
+unsigned long uptime=0; // variable storing system uptime
+int upshift=0; // Shift M(inutes) on the screen, according to number of current system Uptime digits
+int minCheck; // check for minutes to count whole system uptime properly
 int minTemp = 23;
 int maxTemp = 26;
-int minHum = 60;
-int maxHum = 90;
-bool workingMode = false;
+int minHum = 65;
+int maxHum = 95;
+int checkTemp = minTemp; // Check for temprature treshhold 
+int checkCooler = -1;
 
 void setup() {
   Serial.begin(9600);
@@ -40,11 +40,10 @@ void setup() {
   RTC.adjust(DateTime(__DATE__, __TIME__));
   RTC.begin();
   minCheck = RTC.now().minute();
-  pinMode(relayCooler1Pin, OUTPUT);
-//  pinMode(relayCooler2Pin, OUTPUT);
+  pinMode(cooler1Pin, OUTPUT);
   pinMode(relayLightPin, OUTPUT);
   pinMode(relayHeatPin, OUTPUT);
-  pinMode(relayHumidifierPin, OUTPUT);
+  pinMode(humidifierPin, OUTPUT);
   if (! RTC.isrunning())
   {
     Serial.println("RTC is NOT running!");
@@ -60,7 +59,7 @@ void loop() {
   
 void draw(){
   DateTime now = RTC.now();
-  calculateDeltaTime(now);
+  calculateDeltaTime(now); // getting system Uptime and setting shift for M(inutes)
   temperature = dht.readTemperature();
   humidity = dht.readHumidity();
   
@@ -84,49 +83,59 @@ void draw(){
 
   u8g2.drawStr(74, 20, "|Hum:");
   u8g2.setCursor(103, 20);
-  u8g2.print(humidity, 0);
+  u8g2.print(humidity - 20, 0);
   u8g2.drawStr(116, 20, "%");
-  
+
   u8g2.drawStr(2, 30, "Humidifier:");
-  if (humidity < minHum) {
+  if (humidity < minHum + 20) { // ADDED DIFF COMPARING TO ANOTHER SENSOR
     u8g2.drawStr(56, 30, "ON");
-    if (digitalRead(relayHumidifierPin) == LOW){
-      digitalWrite(relayHumidifierPin, HIGH); 
-      delay(500);
-    }
+    digitalWrite(cooler1Pin, LOW); 
+    digitalWrite(humidifierPin, HIGH); 
+    delay(1000);
+  } else if ((now.hour() == 17 and now.minute() == 03) or (now.hour() == 06 and now.minute() == 58)) { // turning on humidifier twice per day
+    u8g2.drawStr(56, 30, "ON");
+    digitalWrite(cooler1Pin, LOW); 
+    digitalWrite(humidifierPin, HIGH); 
   } else {
-    digitalWrite(relayHumidifierPin,LOW);
     u8g2.drawStr(56, 30, "OFF");
+    digitalWrite(humidifierPin,LOW);
   }
-  
+
   u8g2.drawStr(74, 30, "|Vent.:");
-  if (temperature > maxTemp) {
-    u8g2.drawStr(107, 30, "ON");
-    if (digitalRead(relayCooler1Pin) == LOW){
-      delay(500);
-      digitalWrite(relayCooler1Pin,HIGH);
-  //    digitalWrite(relayCooler2Pin,HIGH);      
+  if (digitalRead(humidifierPin) == LOW) { // check to avoid system overload
+      if (temperature > maxTemp){ // or humidity > maxHum) {
+      u8g2.drawStr(107, 30, "ON");
+      checkCooler = now.minute();
+      if (digitalRead(cooler1Pin) == LOW){
+        digitalWrite(cooler1Pin,HIGH);    
+      }
+    } else if ((now.hour() == 06 and now.minute() >= 56) or (now.hour() == 06 and now.minute() == 01) or (checkCooler == now.minute())) { // turning on ventilation twice per day
+      u8g2.drawStr(107, 30, "ON");
+      digitalWrite(cooler1Pin,HIGH);
+    } else {
+      u8g2.drawStr(107, 30, "OFF");
+      digitalWrite(cooler1Pin,LOW);
     }
   } else {
-    u8g2.drawStr(107, 30, "OFF");
-    digitalWrite(relayCooler1Pin,LOW);
-//    digitalWrite(relayCooler2Pin,LOW);
+      u8g2.drawStr(107, 30, "OFF");
+      digitalWrite(cooler1Pin,LOW);
   }
 
   u8g2.drawStr(2, 40, "Heating:");
-  if (temperature < minTemp) {
+  if (temperature < checkTemp) {
     u8g2.drawStr(56, 40, "ON");
-    if (temperature < minTemp + 3){
+    if (temperature < minTemp && checkTemp == minTemp){
       digitalWrite(relayHeatPin,HIGH);
-      minTemp += 3;
+      checkTemp += 1;
     }
   } else {
     u8g2.drawStr(56, 40, "OFF");
-   digitalWrite(relayHeatPin,LOW);
-   minTemp -= 3;
+    digitalWrite(relayHeatPin,LOW);
+    checkTemp = minTemp;
   }
+
   u8g2.drawUTF8(74, 40, "|Light :");
-  if (now.hour() >= 07 and now.hour() < 17){
+  if (now.hour() >= 07 and now.hour() < 17) {
     digitalWrite(relayLightPin,HIGH);
     u8g2.drawStr(107, 40, "ON");
   } else {
@@ -139,6 +148,9 @@ void draw(){
   u8g2.drawStr(31, 52, "|Min:");
   u8g2.setCursor(58, 52);
   u8g2.print(minTemp);
+  if (checkTemp != minTemp) {
+    u8g2.drawStr(69, 52, "T"); //Identificator for treshhold heating
+  }
   u8g2.drawStr(74, 52, "|Max:");
   u8g2.setCursor(107, 52);
   u8g2.print(maxTemp);
@@ -153,7 +165,7 @@ void draw(){
   u8g2.drawVLine(75, 42, 5);
 }
 
-void calculateDeltaTime(DateTime now){
+void calculateDeltaTime(DateTime now) {
   if (minCheck != now.minute()) {
     uptime += 1;
     minCheck = now.minute();
@@ -164,14 +176,14 @@ void calculateDeltaTime(DateTime now){
     Serial.print("hum: ");
     Serial.println(humidity);
     Serial.print("Coolers relay: ");
-    Serial.println(digitalRead(relayCooler1Pin));
+    Serial.println(digitalRead(cooler1Pin));
     Serial.print("Heat relay: ");
     Serial.println(digitalRead(relayHeatPin));
     Serial.print("Light relay: ");
     Serial.println(digitalRead(relayLightPin));
     Serial.print("Humidifier relay: ");
-    Serial.println(digitalRead(relayHumidifierPin));
-    Serial.println("___________________________");
+    Serial.println(digitalRead(humidifierPin));
+    Serial.println("______________________");
     if (uptime > 9 and uptime < 100) {
       upshift = 6;
     } else if (uptime > 99 and uptime < 1000) {
