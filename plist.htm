@@ -1,0 +1,47 @@
+<! DOCTYPE html>
+<html>
+<head>
+  <style type = "text / css">
+  tr, all {
+    border-bottom: 1px solid black;
+ padding: 5px;
+ margin: 0px;
+  }
+  label {
+ position: absolute;
+ left: 19px;
+ margin-right: 5px;
+  }
+  body {font-family: arial}
+  h1 {color: # FF0000;}
+  </style>
+  <script src = "/ js_proc_list"> </script>
+  <script>
+ function init () {
+   if (document.URL.indexOf ("insert_proc")> -1) {window.location = '/'; }
+   if (document.URL.indexOf ("del_proc")> -1) {window.location = '/';}
+   var obj = JSON.parse (json_proc);
+   var html = '<table>';
+   for (var i = 0; i <obj.processos.length; i ++) {
+        html + = '<tr>' +
+    '<td>' + obj.processes [i] .id_proc + '</td>' +
+    '<td>' + obj.processes [i] .proc + '</td>' +
+    '<td>' + '<a href="del_proc?p='+obj.processes[i[.id_proc+'" onclick=\"return confirm(\'Do you really want to delete?\');\"> Delete < / a> </td> '+
+    '</tr>';
+   }
+   html + = '</table>';
+   document.getElementById ("lproc"). innerHTML = html;
+ }
+  </script>
+</head>
+<body onload = "init ();">
+  <div> <a href="/"> Home </a> | <a href="/logoff" onclick="return confirm('Do you really want to logout ?');"> Logoff </a> </div>
+  <br>
+  <form action = "/ insert_proc" method = "GET">
+    Process Name:
+    <input type = "text" name = "p" maxlength = "15" id = "p" /> <input type = "submit" value = "include">
+  </form>
+  <br>
+  <div id = "lproc"> </div>
+</body>
+</html>
