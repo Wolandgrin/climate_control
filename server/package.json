@@ -1,0 +1,14 @@
+{
+  "name": "package.json",
+  "version": "1.0.0",
+  "description": "Server handling Arduino data",
+  "main": "index.js",
+  "scripts": {
+    "test": "TODO: tests will be implemented later"
+  },
+  "author": "Woland",
+  "license": "ISC",
+  "dependencies": {
+    "johnny-five": "^1.4.0"
+  }
+}

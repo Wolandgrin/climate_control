@@ -4,7 +4,7 @@
 String deviceId = "vFEEC96DE2707EDF";// "vE88ABDC967551EF"; //or vFEEC96DE2707EDF
 const char* logServer = "api.pushingbox.com";
 byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x01};
-char receivedData[33]; 
+char receivedData[31]; 
 String curDate;
 String curTime;
 String uptime;
@@ -13,8 +13,11 @@ String humid;
 String heat;
 String cooler;
 String humidif;
-String light; 
-
+String light;
+String msg;
+static const unsigned long SEND_INTERVAL = 60000; // ms
+static unsigned long lastRefreshTime = 0;
+  
 EthernetServer server(80);
 
 void setup() {
@@ -36,45 +39,45 @@ void setup() {
 
 void loop() {
   receiver(receivedData);
-  delay(3000);
+  delay(500);
   refreshServer();
-  delay(5000);
+  delay(500);
   handleNotifs();
-  delay(2000);
+  delay(500);
 }
 
 void handleNotifs() {
-  String msg;
-  long int t = temp.toInt();
-  long int h = humid.toInt();
-//  Serial.println(t);
-//  Serial.println(h);
-
-  if (t <= 22){
-    msg = "Temperature is below minimum: ";
-    msg += String(temp);
-  } else if (t >= 27) {
-    msg = "Temperature is above maximum: ";
-    msg += temp;
+  if(millis() - lastRefreshTime >= SEND_INTERVAL) {
+    float t = temp.toFloat();
+    long int h = humid.toInt();
+    if (t <= 22) {
+      msg = "Temperature is below minimum: ";
+      msg += String(temp);
+//      Serial.println(t);
+    } else if (t >= 27) {
+      msg = "Temperature is above maximum: ";
+      msg += temp;
+    }
+    if (msg.length() > 0 && (h >= 99 || h < 60)) { msg += "; "; }
+    
+    if (h >= 99){
+      msg += "Humidity is above maximum: ";
+      msg += String(humid);
+    } else if (h < 60) {
+      msg += "Humidity is below minimum: ";
+      msg += String(humid);
+    }
+    lastRefreshTime += SEND_INTERVAL;
+    sendToPushingBox(msg);
+//    Serial.println(receivedData);
   }
-  if (msg.length() > 0 && (h >= 99 || h < 60)) { msg += "; "; }
-  
-  if (h >= 99){
-    msg += "Humidity is above maximum: ";
-    msg += String(humid);
-  } else if (h < 60) {
-    msg += "Humidity is below minimum: ";
-    msg += String(humid);
-  }
-  sendToPushingBox(msg);
 }
 
 void receiveEvent(int bytes) {
   byte index = 0;
-  while  (Wire.available() && (index < 33)) {
+  while  (Wire.available() && (index < 31)) {
     receivedData[index++] = Wire.read();
   }
-  Serial.println(receivedData);
 }
 
 void refreshServer() {
@@ -96,31 +99,31 @@ void refreshServer() {
           client.println("<html>");
           client.print("Date: ");
           client.print(curDate);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Time: ");
           client.print(curTime);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Uptime: ");
           client.print(uptime);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Temperature: ");
           client.print(temp);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Humidity: ");
           client.print(humid);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Heat: ");
           client.print(heat);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Cooler: ");
           client.print(cooler);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Humidifier: ");
           client.print(humidif);
-          lineBreak(client);
+          client.println("<br />");
           client.print("Light: ");
           client.print(light);
-          lineBreak(client);
+          client.println("<br />");
           client.println("</html>");
           break;
         }
@@ -137,31 +140,29 @@ void refreshServer() {
   }
 }
 
-void lineBreak(EthernetClient client) {
-  client.println("<br />");
-}
-
-void receiver(char recieved[50]) {
+void receiver(char recieved[31]) {
   char* ptr = strtok(recieved, ";");
   int idx = 0;
     while(ptr != NULL && idx < 6) {
         printf("%s\n", ptr);
+//        Serial.print("PTR: ");
+//        Serial.println(ptr);
         switch (idx) {
           case 0:
             curDate = ptr; break;
           case 1:
             curTime = ptr; break;
           case 2:
-            uptime = String(ptr); break;
-          case 3:
             temp = String(ptr); break;
-          case 4:
+          case 3:
             humid = String(ptr); break;
-          case 5:
+          case 4:
             heat = handleSensors(String((String(ptr)).charAt(0)));
             cooler = handleSensors(String((String(ptr)).charAt(1)));
             humidif = handleSensors(String((String(ptr)).charAt(2)));
             light = handleSensors(String((String(ptr)).charAt(3))); break;
+          case 5:
+            uptime = String(ptr); break;
           default:
             break;
         }
@@ -179,16 +180,14 @@ void sendToPushingBox(String message) {
     EthernetClient client2;
     if (client2.connect("api.pushingbox.com", 80)) {
       Serial.println ("Connected to pushingbox");
-      Serial.println(message);
-      
+            
       String postStr = "devid=";
       postStr += String(deviceId);
       postStr += "&message_param=";
       postStr += message;
       postStr += "\r\n\r\n";
 
-      Serial.print("Sending..");
-
+      Serial.println("Sending..");
       client2.print("POST /pushingbox HTTP/1.1\n");
       client2.print("Host: api.pushingbox.com\n");
       client2.print("Connection: close\n");
