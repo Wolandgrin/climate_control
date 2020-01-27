@@ -3,7 +3,7 @@
 
 String deviceId = "vFEEC96DE2707EDF";// "vE88ABDC967551EF"; //or vFEEC96DE2707EDF
 const char* logServer = "api.pushingbox.com";
-byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x01};
+byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x09};
 char receivedData[31]; 
 String curDate;
 String curTime;
@@ -14,7 +14,6 @@ String heat;
 String cooler;
 String humidif;
 String light;
-String msg;
 static const unsigned long SEND_INTERVAL = 60000; // ms
 static unsigned long lastRefreshTime = 0;
   
@@ -39,33 +38,38 @@ void setup() {
 
 void loop() {
   receiver(receivedData);
-  delay(500);
+  delay(700);
   refreshServer();
-  delay(500);
+  delay(700);
   handleNotifs();
-  delay(500);
+  delay(600);
 }
 
 void handleNotifs() {
   if(millis() - lastRefreshTime >= SEND_INTERVAL) {
     float t = temp.toFloat();
     long int h = humid.toInt();
-    if (t <= 22) {
-      msg = "Temperature is below minimum: ";
-      msg += String(temp);
-//      Serial.println(t);
-    } else if (t >= 27) {
-      msg = "Temperature is above maximum: ";
-      msg += temp;
-    }
-    if (msg.length() > 0 && (h >= 99 || h < 60)) { msg += "; "; }
-    
-    if (h >= 99){
-      msg += "Humidity is above maximum: ";
-      msg += String(humid);
-    } else if (h < 60) {
-      msg += "Humidity is below minimum: ";
-      msg += String(humid);
+    String msg;
+    if (t > 0 && h < 0) {
+      if (t <= 22) {
+        msg = "Temperature is below minimum: ";
+        msg += String(temp);
+  //      Serial.println(t);
+      } else if (t >= 27) {
+        msg = "Temperature is above maximum: ";
+        msg += temp;
+      }
+      if (msg.length() > 0 && (h >= 99 || h < 60)) { msg += "; "; }
+      
+      if (h >= 99){
+        msg += "Humidity is above maximum: ";
+        msg += String(humid);
+      } else if (h < 60) {
+        msg += "Humidity is below minimum: ";
+        msg += String(humid);
+      }
+    }  else {
+      msg = "No data from MASTER";
     }
     lastRefreshTime += SEND_INTERVAL;
     sendToPushingBox(msg);
