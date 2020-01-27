@@ -26,9 +26,13 @@ int minTemp = 23;
 int maxTemp = 26;
 int minHum = 65;
 int maxHum = 95;
+bool humidState;
+bool coolerState;
 int checkTemp = minTemp; // Check for temprature treshhold 
-int checkCooler = -1;
-
+int checkCool = maxTemp;
+static const unsigned long SEND_INTERVAL = 20000; // ms
+static unsigned long lastRefreshTime = 0;
+  
 void setup() {
   Serial.begin(9600);
   dht.begin();
@@ -48,6 +52,9 @@ void setup() {
   {
     Serial.println("RTC is NOT running!");
   }
+  Serial.println("_____________________________________________________________________");
+  Serial.println("|   Date   |  Time |  Temp |  Hum  |Cooler| Heat|Light|Humid| Uptime |");
+  Serial.println("_____________________________________________________________________");
 }
 
 void loop() {
@@ -56,10 +63,42 @@ void loop() {
     draw();
   } while(u8g2.nextPage());
 }
+
+void sendStats(DateTime now) {
+  char sendData[33];
+  String delim = ";";
+  char tempData[18];
+  sprintf(tempData, "%02d.%02d.%02d;%02d:%02d;", now.day(), now.month(), now.year() - 2000, now.hour(), now.minute());
+  String tempStr = tempData;
+  tempStr += (String(temperature)).substring(0, 4);
+  tempStr += delim;
+  tempStr += int(humidity - 20);
+  tempStr += delim;
+  tempStr += digitalRead(relayHeatPin);
+  tempStr += coolerState;
+  tempStr += humidState;
+  tempStr += digitalRead(relayLightPin);
+  tempStr += delim;
+  tempStr += uptime;
+  tempStr.toCharArray(sendData, 33);
+//  Serial.println(sendData);
+
+  Wire.beginTransmission(9); // transmit to device #1
+  Wire.write(sendData);              // sends x 
+  Wire.endTransmission();    // stop transmitting
+}
   
 void draw(){
   DateTime now = RTC.now();
-  calculateDeltaTime(now); // getting system Uptime and setting shift for M(inutes)
+  
+  if(millis() - lastRefreshTime >= SEND_INTERVAL) {
+    calculateDeltaTime(now); // getting system Uptime and setting shift for M(inutes)
+    if(millis() - lastRefreshTime >= SEND_INTERVAL / 4) {
+      sendStats(now);
+    }
+    lastRefreshTime += SEND_INTERVAL;
+  }
+
   temperature = dht.readTemperature();
   humidity = dht.readHumidity();
   
@@ -89,36 +128,36 @@ void draw(){
   u8g2.drawStr(2, 30, "Humidifier:");
   if (humidity < minHum + 20) { // ADDED DIFF COMPARING TO ANOTHER SENSOR
     u8g2.drawStr(56, 30, "ON");
-    digitalWrite(cooler1Pin, LOW); 
-    digitalWrite(humidifierPin, HIGH); 
-    delay(1000);
-  } else if ((now.hour() == 17 and now.minute() == 03) or (now.hour() == 06 and now.minute() == 58)) { // turning on humidifier twice per day
+    digitalWrite(humidifierPin, HIGH);
+    humidState = true;
+    delay(2000);
+  } else if ((now.hour() == 06 and now.minute() == 58) or (now.hour() == 01 and now.minute() == 04)) { // turning on humidifier twice per day
     u8g2.drawStr(56, 30, "ON");
-    digitalWrite(cooler1Pin, LOW); 
     digitalWrite(humidifierPin, HIGH); 
+    humidState = true;
   } else {
     u8g2.drawStr(56, 30, "OFF");
     digitalWrite(humidifierPin,LOW);
+    humidState = false;
   }
 
   u8g2.drawStr(74, 30, "|Vent.:");
-  if (digitalRead(humidifierPin) == LOW) { // check to avoid system overload
-      if (temperature > maxTemp){ // or humidity > maxHum) {
-      u8g2.drawStr(107, 30, "ON");
-      checkCooler = now.minute();
-      if (digitalRead(cooler1Pin) == LOW){
-        digitalWrite(cooler1Pin,HIGH);    
-      }
-    } else if ((now.hour() == 06 and now.minute() >= 56) or (now.hour() == 06 and now.minute() == 01) or (checkCooler == now.minute())) { // turning on ventilation twice per day
-      u8g2.drawStr(107, 30, "ON");
-      digitalWrite(cooler1Pin,HIGH);
-    } else {
-      u8g2.drawStr(107, 30, "OFF");
-      digitalWrite(cooler1Pin,LOW);
+  if (temperature > checkCool or humidity > maxHum) {
+  u8g2.drawStr(107, 30, "ON");
+  if (digitalRead(cooler1Pin) == LOW){
+    digitalWrite(cooler1Pin,HIGH);
+    coolerState = true;
+    checkCool -= 1;
     }
+  } else if ((now.hour() == 06 and now.minute() == 56) or (now.hour() == 01 and now.minute() == 04)) { // turning on ventilation twice per day
+    u8g2.drawStr(107, 30, "ON");
+    digitalWrite(cooler1Pin,HIGH);
+    coolerState = true;  
   } else {
-      u8g2.drawStr(107, 30, "OFF");
-      digitalWrite(cooler1Pin,LOW);
+    u8g2.drawStr(107, 30, "OFF");
+    digitalWrite(cooler1Pin,LOW);
+    coolerState = false;
+    checkCool = maxTemp;
   }
 
   u8g2.drawStr(2, 40, "Heating:");
@@ -154,6 +193,9 @@ void draw(){
   u8g2.drawStr(74, 52, "|Max:");
   u8g2.setCursor(107, 52);
   u8g2.print(maxTemp);
+  if (checkCool != maxTemp) {
+    u8g2.drawStr(119, 52, "T"); //Identificator for treshhold cooling
+  }
   u8g2.drawStr(2, 62, "HUM");
   u8g2.drawStr(31, 62, "|Min:");
   u8g2.setCursor(58, 62);
@@ -168,22 +210,6 @@ void draw(){
 void calculateDeltaTime(DateTime now) {
   if (minCheck != now.minute()) {
     uptime += 1;
-    minCheck = now.minute();
-    Serial.print("uptime: ");
-    Serial.println(uptime);
-    Serial.print("temp: ");
-    Serial.println(temperature);
-    Serial.print("hum: ");
-    Serial.println(humidity);
-    Serial.print("Coolers relay: ");
-    Serial.println(digitalRead(cooler1Pin));
-    Serial.print("Heat relay: ");
-    Serial.println(digitalRead(relayHeatPin));
-    Serial.print("Light relay: ");
-    Serial.println(digitalRead(relayLightPin));
-    Serial.print("Humidifier relay: ");
-    Serial.println(digitalRead(humidifierPin));
-    Serial.println("______________________");
     if (uptime > 9 and uptime < 100) {
       upshift = 6;
     } else if (uptime > 99 and uptime < 1000) {
@@ -194,4 +220,25 @@ void calculateDeltaTime(DateTime now) {
       upshift = 24;
     }
   }
+
+  minCheck = now.minute();
+  Serial.print("| ");
+  Serial.print(date);
+  Serial.print(" | ");
+  Serial.print(curTime);
+  Serial.print(" | ");
+  Serial.print(temperature);
+  Serial.print(" | ");
+  Serial.print(humidity - 20);
+  Serial.print(" |  ");
+  Serial.print(coolerState);
+  Serial.print("   |  ");
+  Serial.print(digitalRead(relayHeatPin));
+  Serial.print("  |  ");
+  Serial.print(digitalRead(relayLightPin));
+  Serial.print("  |  ");
+  Serial.print(humidState);
+  Serial.print("  |  ");
+  Serial.print(uptime);
+  Serial.println("  |");
 }
