@@ -41,17 +41,17 @@ void setup() {
   u8g2.setFont(u8g2_font_helvB08_tf);
   u8g2.setColorIndex(1);
   Wire.begin();
-  RTC.adjust(DateTime(__DATE__, __TIME__));
+//  RTC.adjust(DateTime(__DATE__, __TIME__));
   RTC.begin();
   minCheck = RTC.now().minute();
-  pinMode(cooler1Pin, OUTPUT);
-  pinMode(relayLightPin, OUTPUT);
-  pinMode(relayHeatPin, OUTPUT);
-  pinMode(humidifierPin, OUTPUT);
   if (! RTC.isrunning())
   {
     Serial.println("RTC is NOT running!");
   }
+  pinMode(cooler1Pin, OUTPUT);
+  pinMode(relayLightPin, OUTPUT);
+  pinMode(relayHeatPin, OUTPUT);
+  pinMode(humidifierPin, OUTPUT);
   Serial.println("_____________________________________________________________________");
   Serial.println("|   Date   |  Time |  Temp |  Hum  |Cooler| Heat|Light|Humid| Uptime |");
   Serial.println("_____________________________________________________________________");
@@ -142,12 +142,13 @@ void draw(){
   }
 
   u8g2.drawStr(74, 30, "|Vent.:");
-  if (temperature > checkCool or humidity > maxHum) {
+  if (temperature > checkCool) {
   u8g2.drawStr(107, 30, "ON");
   if (digitalRead(cooler1Pin) == LOW){
     digitalWrite(cooler1Pin,HIGH);
     coolerState = true;
     checkCool -= 1;
+    delay(2000);
     }
   } else if ((now.hour() == 06 and now.minute() == 56) or (now.hour() == 01 and now.minute() == 04)) { // turning on ventilation twice per day
     u8g2.drawStr(107, 30, "ON");
