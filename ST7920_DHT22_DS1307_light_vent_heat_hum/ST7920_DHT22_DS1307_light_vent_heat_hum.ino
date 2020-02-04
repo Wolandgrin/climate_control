@@ -23,9 +23,9 @@ unsigned long uptime=0; // variable storing system uptime
 int upshift=0; // Shift M(inutes) on the screen, according to number of current system Uptime digits
 int minCheck; // check for minutes to count whole system uptime properly
 int minTemp = 23;
-int maxTemp = 26;
-int minHum = 65;
-int maxHum = 95;
+int maxTemp = 27;
+int minHum = 60;
+int maxHum = 90;
 bool humidState;
 bool coolerState;
 int checkTemp = minTemp; // Check for temprature treshhold 
@@ -41,12 +41,12 @@ void setup() {
   u8g2.setFont(u8g2_font_helvB08_tf);
   u8g2.setColorIndex(1);
   Wire.begin();
-//  RTC.adjust(DateTime(__DATE__, __TIME__));
   RTC.begin();
   minCheck = RTC.now().minute();
   if (! RTC.isrunning())
   {
     Serial.println("RTC is NOT running!");
+    RTC.adjust(DateTime(__DATE__, __TIME__));
   }
   pinMode(cooler1Pin, OUTPUT);
   pinMode(relayLightPin, OUTPUT);
@@ -72,7 +72,7 @@ void sendStats(DateTime now) {
   String tempStr = tempData;
   tempStr += (String(temperature)).substring(0, 4);
   tempStr += delim;
-  tempStr += int(humidity - 20);
+  tempStr += int(humidity - 15);
   tempStr += delim;
   tempStr += digitalRead(relayHeatPin);
   tempStr += coolerState;
@@ -94,7 +94,7 @@ void draw(){
   if(millis() - lastRefreshTime >= SEND_INTERVAL) {
     calculateDeltaTime(now); // getting system Uptime and setting shift for M(inutes)
     if(millis() - lastRefreshTime >= SEND_INTERVAL / 4) {
-      sendStats(now);
+//      sendStats(now);
     }
     lastRefreshTime += SEND_INTERVAL;
   }
@@ -122,11 +122,11 @@ void draw(){
 
   u8g2.drawStr(74, 20, "|Hum:");
   u8g2.setCursor(103, 20);
-  u8g2.print(humidity - 20, 0);
+  u8g2.print(humidity - 15, 0);
   u8g2.drawStr(116, 20, "%");
 
   u8g2.drawStr(2, 30, "Humidifier:");
-  if (humidity < minHum + 20) { // ADDED DIFF COMPARING TO ANOTHER SENSOR
+  if (humidity < minHum + 15) { // ADDED DIFF COMPARING TO ANOTHER SENSOR
     u8g2.drawStr(56, 30, "ON");
     digitalWrite(humidifierPin, HIGH);
     humidState = true;
@@ -230,7 +230,7 @@ void calculateDeltaTime(DateTime now) {
   Serial.print(" | ");
   Serial.print(temperature);
   Serial.print(" | ");
-  Serial.print(humidity - 20);
+  Serial.print(humidity - 15);
   Serial.print(" |  ");
   Serial.print(coolerState);
   Serial.print("   |  ");
