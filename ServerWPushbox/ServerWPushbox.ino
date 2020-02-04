@@ -1,7 +1,7 @@
 #include<Wire.h>
 #include <Ethernet.h>
 
-String deviceId = "vFEEC96DE2707EDF";// "vE88ABDC967551EF"; //or vFEEC96DE2707EDF
+String deviceId = "vE88ABDC967551EF";// "vE88ABDC967551EF"; //or vFEEC96DE2707EDF
 const char* logServer = "api.pushingbox.com";
 byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x09};
 char receivedData[31]; 
