@@ -2,189 +2,183 @@
 #include <Time.h>
 #include <RTClib.h>
 #include <Ethernet.h>
+#include <MQUnifiedsensor.h>
 
 #define DHTTYPE DHT22
-#define relayHeatPin 2
-#define relayLightPin 3
-#define coolerPin 6
-#define humidifierPin 7
-
+#define rHeatP 2
+#define rLightP 3
+#define ventP 6
+#define humidP 7
+#define type "MQ-135"
 RTC_DS1307 RTC;
 DHT dht(9, DHTTYPE);
-EthernetServer server(80);
-IPAddress ip(192, 168, 1, 100);
-String deviceId = "vE88ABDC967551EF";// "vE88ABDC967551EF"; //or vFEEC96DE2707EDF
-const char* logServer = "api.pushingbox.com";
+EthernetServer srv(80);
+String devId = "vE88ABDC967551EF";// "vE88ABDC967551EF"; //or vFEEC96DE2707EDF
+const char* logSrv = "api.pushingbox.com";
 byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
-float temperature;
-float humidity;
+float temp;
+float hum;
 char date [9];
-char curTime [9];
-unsigned long uptime=0; // variable storing system uptime
-int upshift=0; // Shift M(inutes) on the screen, according to number of current system Uptime digits
+char curT [9];
+unsigned long upTime=0; // variable storing system uptime
 int minCheck; // check for minutes to count whole system uptime properly
-int minTemp = 25.5;
-int maxTemp = 27;
+int minTmp = 25.5;
+int maxTmp = 27;
 int minHum = 70;
 int maxHum = 90;
-int humidState;
-int coolerState;
-int checkTemp = minTemp; // Check for temprature treshhold 
-int checkCool = maxTemp;
-static const unsigned long SEND_INTERVAL = 20000;
-static unsigned long lastRefreshTime = 0;
-String serverMsg = "Nothing to send yet";
-  
+int hState;
+int vState;
+int checkTemp = minTmp; // Check for temprature treshhold 
+int checkCool = maxTmp;
+static unsigned long refrT = 0;
+String srvMsg = "None";
+int airQ;
+String ms;
+
 void setup() {
   Serial.begin(9600);
   dht.begin();
   RTC.begin();
-  RTC.adjust(DateTime(__DATE__, __TIME__));
+//  RTC.adjust(DateTime(__DATE__, __TIME__));
   minCheck = RTC.now().minute();
   if (! RTC.isrunning())
   {
     RTC.adjust(DateTime(__DATE__, __TIME__));
   }
   delay(2000);
-  //Ethernet.begin(mac);
+  Ethernet.begin(mac);
   delay(1000);
-  //Serial.print("Ethernet IP: ");
-  //Serial.println(Ethernet.localIP());
-  //server.begin();
+  Serial.println(Ethernet.localIP());
+  srv.begin();
   
-  pinMode(coolerPin, OUTPUT);
-  pinMode(relayLightPin, OUTPUT);
-  pinMode(relayHeatPin, OUTPUT);
-  pinMode(humidifierPin, OUTPUT);
-  String beginMsg = "Started with the following ranges: \nTemperature from " + String(minTemp) + " to " + String(maxTemp) + "\nHumidity from " + String(minHum) + " to " + String(maxHum);
-  Serial.println(beginMsg);
-  Serial.println("Visual system test for:\n1. Cooler");
-  digitalWrite(coolerPin, HIGH);
+  pinMode(ventP, OUTPUT);
+  pinMode(rLightP, OUTPUT);
+  pinMode(rHeatP, OUTPUT);
+  pinMode(humidP, OUTPUT);
+  Serial.println("Ranges: \nTemp: " + String(minTmp) + "-" + String(maxTmp) + "\nHum: " + String(minHum) + "-" + String(maxHum));
+  Serial.println("Test:\nCooler");
+  digitalWrite(ventP, HIGH);
   delay(5000);
-  digitalWrite(coolerPin, LOW);
-  Serial.println("2. Humidifier");
-  digitalWrite(humidifierPin, HIGH);
+  digitalWrite(ventP, LOW);
+  Serial.println("Humidif");
+  digitalWrite(humidP, HIGH);
   delay(5000);
-  digitalWrite(humidifierPin, LOW);
-  Serial.println("3. Light");
-  digitalWrite(relayLightPin, HIGH);
+  digitalWrite(humidP, LOW);
+  Serial.println("Light");
+  digitalWrite(rLightP, HIGH);
   delay(5000);
-  digitalWrite(relayLightPin, LOW);
-  Serial.println("4. Heat pad");
-  digitalWrite(relayHeatPin, HIGH);
+  digitalWrite(rLightP, LOW);
+  Serial.println("Heat");
+  digitalWrite(rHeatP, HIGH);
   delay(5000);
-  digitalWrite(relayHeatPin, LOW);
+  digitalWrite(rHeatP, LOW);
   delay(2000);
-  Serial.print("|   Date   |   Time   |  Temp |  Hum  |Cooler| Heat|Light|Humid| Uptime |");
+  Serial.print("|   Date   |   Time   |  Temp |  Hum  | Air |Cooler| Heat|Light|Humid| Uptime |");
 }
 
 void loop() {
   DateTime now = RTC.now();
   sprintf(date, "%02d.%02d.%02d", now.day(), now.month(), now.year() - 2000);
-  sprintf(curTime, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+  sprintf(curT, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
   
-  temperature = dht.readTemperature();
-  humidity = dht.readHumidity() - 25;
+  temp = dht.readTemperature();
+  hum = dht.readHumidity(); // REMOVED DIFF COMPARING TO ANOTHER SENSOR
+  airQ = analogRead(0);
 
-  if(millis() - lastRefreshTime >= SEND_INTERVAL) {
-    calculateDeltaTime(now); // getting system Uptime and setting shift for M(inutes)
-    if(millis() - lastRefreshTime >= SEND_INTERVAL / 4) {
-      handleParams(now);
+  if(millis() - refrT >= 20000) {
+    calcUptime(now); // getting system Uptime and setting shift for M(inutes)
+    if(millis() - refrT >= 5000) {
       handleNotifs();
-     // refreshServer();
+      handleParams(now);
+      reloadPage();
     }
-    lastRefreshTime += SEND_INTERVAL;
+    refrT += 20000;
   } 
 }
 
 void handleNotifs() {
   String msg;
-  if ((temperature > 0.0) && (humidity > 0.0)) {
-    if (temperature <= minTemp - 1.0) {
-      msg = "Temperature is below minimum: ";
-      msg += String(temperature);
-    } else if (temperature >= maxTemp + 1.0) {
-      msg = "Temperature is above maximum: ";
-      msg += String(temperature);
+  if ((temp > 0.0) && (hum > 0.0)) {
+    if (temp <= minTmp - 1.0) {
+      msg = "Low";
+    } else if (temp >= maxTmp + 1.0) {
+      msg = "High";
     }
-    if (msg.length() > 0 && (humidity == 100 || humidity < minHum - 5.0)) { msg += "; "; }
+    if (msg.length() > 0 && (hum < minHum - 5.0)) { msg += String(" temp: " + String(temp)) + "; "; }
 
-    if (humidity == 100){
-      msg += "Humidity is above maximum: ";
-      msg += String(humidity);
-    } else if (humidity < minHum - 5.0) {
-      msg += "Humidity is below minimum: ";
-      msg += String(humidity);
+    if (hum < minHum - 5.0) {
+      msg += String("Low hum: " + String(hum));
     }
   }  else {
-    msg = "No data from MASTER";
-  }
-  //sendToPushingBox(msg);
-  if (msg.length() > 0) {
-    serverMsg = "Last notification sent at " + String(date) + " " + String(curTime) + ", message: " + msg;
+    msg = "No data";
+  }    
+  
+  if (msg.length() > 4) {
+    srvMsg = "Sent at " + String(date) + " " + String(curT);
+    pushNotif(msg);
+    ms = msg;
   }
 }
 
-void handleParams(DateTime now){
-  if (humidity < minHum) { // REMOVED DIFF COMPARING TO ANOTHER SENSOR
-    digitalWrite(humidifierPin, HIGH);
-    humidState = 1;
+void handleParams(DateTime now) {
+  if (hum < minHum) {
+    digitalWrite(humidP, HIGH);
+    hState = 1;
     delay(8000);
-  } else if (now.minute() == 59) { // turning on humidifier every hour
-    digitalWrite(humidifierPin, HIGH); 
-    humidState = 1;
+  } else if (now.minute() > 57) { // turn on humidif every hour
+    digitalWrite(humidP, HIGH); 
+    hState = 1;
   } else {
-    digitalWrite(humidifierPin,LOW);
-    humidState = 0;
+    digitalWrite(humidP, LOW);
+    hState = 0;
   }
 
-  if (temperature > checkCool) {
-    if (coolerState == 0){
-      digitalWrite(coolerPin,HIGH);
-      coolerState = 1;
+  if (temp > checkCool) {
+    if (vState == 0) {
+      digitalWrite(ventP, HIGH);
+      vState = 1;
       checkCool -= 1;
       delay(2000);
     }
-  } else if ((now.hour() == 07 and now.minute() == 56) or (now.hour() == 16 and now.minute() == 57)) { // turning on ventilation twice per day
-    digitalWrite(coolerPin,HIGH);
-    coolerState = 1;  
+  } else if ((now.hour() == 07 or now.hour() == 16) and now.minute() == 57) { // turn on vent twice per day
+    digitalWrite(ventP, HIGH);
+    vState = 1;  
   } else {
-    digitalWrite(coolerPin,LOW);
-    coolerState = 0;
-    checkCool = maxTemp;
+    digitalWrite(ventP, LOW);
+    vState = 0;
+    checkCool = maxTmp;
   }
 
-  if (temperature < checkTemp) {
-    if (temperature < minTemp && checkTemp == minTemp){
-      digitalWrite(relayHeatPin,HIGH);
+  if (temp < checkTemp){
+    if (temp < minTmp && checkTemp == minTmp) {
+      digitalWrite(rHeatP, HIGH);
       checkTemp += 1;
     }
   } else {
-    digitalWrite(relayHeatPin,LOW);
-    checkTemp = minTemp;
+    digitalWrite(rHeatP, LOW);
+    checkTemp = minTmp;
   }
 
   if (now.hour() >= 07 and now.hour() < 17) {
-    digitalWrite(relayLightPin,HIGH);
+    digitalWrite(rLightP, HIGH);
   } else {
-    digitalWrite(relayLightPin,LOW);
+    digitalWrite(rLightP, LOW);
   }
 }
 
-String handleSensors(int data) {
-  if (data == 1) { return "ON "; } else { return "OFF"; }
+String hndlSens(int data) {
+  if (data == 1){return "ON ";} else {return "OFF";}
 }
 
-void refreshServer() {
-  EthernetClient client = server.available();
-  Serial.print("Here");
-  if (client) {
-    Serial.print(" Web started ");
-    boolean currentLineIsBlank = true;
-    while (client.connected()) {
+void reloadPage() {
+  EthernetClient client = srv.available();
+  if (client){
+    Serial.print(" Web on ");
+    boolean blankLine = true;
+    while (client.connected()){
       if (client.available()) {
         char c = client.read();
-        if (c == '\n' && currentLineIsBlank) {
+        if (c == '\n' && blankLine){
           client.println("HTTP/1.1 200 OK");
           client.println("Content-Type: text/html");
           client.println("Connection: close");
@@ -192,113 +186,84 @@ void refreshServer() {
           client.println();
           client.println("<!DOCTYPE HTML>");
           client.println("<html>");
-          client.print(serverMsg);
-          client.println("<br />");          
-          client.print("Date: ");
-          client.print(date);
-          client.println("<br />");
-          client.print("Time: ");
-          client.print(curTime);
-          client.println("<br />");
-          client.print("Uptime: ");
-          client.print(uptime);
-          client.println("<br />");
-          client.print("Temperature: ");
-          client.print(temperature);
-          client.println("<br />");
-          client.print("Humidity: ");
-          client.print(humidity);
-          client.println("<br />");
-          client.print("Heat: ");
-          client.print(handleSensors(digitalRead(relayHeatPin)));
-          client.println("<br />");
-          client.print("Cooler: ");
-          client.print(handleSensors(coolerState));
-          client.println("<br />");
-          client.print("Humidifier: ");
-          client.print(handleSensors(humidState));
-          client.println("<br />");
-          client.print("Light: ");
-          client.print(handleSensors(digitalRead(relayLightPin)));
-          client.println("<br />");
+          client.print(srvMsg);
+          client.print(ms);
+          client.print("<br />");
+          client.print("Date: " + String(date) + "<br />");
+          client.print("Time: " + String(curT) + "<br />");
+          client.print("Uptime: " + String(upTime) + "<br />");
+          client.print("Temp: " + String(temp) + "<br />");
+          client.print("Hum: " + String(hum) + "<br />");
+          client.print("CO2: " + String(airQ) + "<br />");
+          client.print("Heater: " + hndlSens(digitalRead(rHeatP)) + "<br />");
+          client.print("Cooler: " + hndlSens(vState) + "<br />");
+          client.print("Humidifier: " + hndlSens(hState) + "<br />");
+          client.print("Light: " + hndlSens(digitalRead(rLightP)) + "<br />");
           client.println("</html>");
           break;
         }
         if (c == '\n') {
-          currentLineIsBlank = true;
+          blankLine = true;
         } else if (c != '\r') {
-          currentLineIsBlank = false;
+          blankLine = false;
         }
       }
     }
     delay(1);
     client.stop();
-    Serial.print("and disconnected");
+    Serial.print("and off ");
   }
 }
 
-void sendToPushingBox(String message) {
-  if (message.length() > 0) {
-    delay(3000);
-    EthernetClient client2;
-    Serial.print(" HERE2 ");
-    if (client2.connect("api.pushingbox.com", 80)) {            
-      String postStr = "devid=";
-      postStr += String(deviceId);
-      postStr += "&message_param=";
-      postStr += message;
-      postStr += "\r\n\r\n";
+void pushNotif(String msg) {
+  delay(3000);
+  EthernetClient client2;
+  if (client2.connect(logSrv, 80)) {            
+    String postStr = "devid=";
+    postStr += devId;
+    postStr += "&message_param=";
+    postStr += msg;
+    postStr += "\r\n\r\n";
 
-      client2.print("POST /pushingbox HTTP/1.1\n");
-      client2.print("Host: api.pushingbox.com\n");
-      client2.print("Connection: close\n");
-      client2.print("Content-Type: application/x-www-form-urlencoded\n");
-      client2.print("Content-Length: ");
-      client2.print(postStr.length());
-      client2.print("\n\n");
-      client2.print(postStr);
-      Serial.print(" POST sent with: ");
-      Serial.print(message);
-    }
-    client2.stop();
-    delay(2000);
+    client2.print("POST /pushingbox HTTP/1.1\n");
+    client2.print("Host: " + String(logSrv) + "\n");
+    client2.print("Connection: close\n");
+    client2.print("Content-Type: application/x-www-form-urlencoded\n");
+    client2.print("Content-Length: ");
+    client2.print(postStr.length());
+    client2.print("\n\n");
+    client2.print(postStr);
   }
+  client2.stop();
+  delay(2000);
 }
 
-void calculateDeltaTime(DateTime now) {
+void calcUptime(DateTime now) {
   if (minCheck != now.minute()) {
-    uptime += 1;
-    if (uptime > 9 and uptime < 100) {
-      upshift = 6;
-    } else if (uptime > 99 and uptime < 1000) {
-      upshift = 12;
-    } else if (uptime > 999 and uptime < 10000) {
-      upshift = 18;
-    } else if (uptime > 9999) {
-      upshift = 24;
-    }
+    upTime += 1;
+    minCheck = now.minute();
   }
-
-  minCheck = now.minute();
   Serial.println();
   Serial.print("| ");
   Serial.print(date);
   Serial.print(" | ");
-  Serial.print(curTime);
+  Serial.print(curT);
   Serial.print(" | ");
-  Serial.print(temperature);
+  Serial.print(temp);
   Serial.print(" | ");
-  Serial.print(humidity);
+  Serial.print(hum);
   Serial.print(" |  ");
-  Serial.print(coolerState);
+  Serial.print(airQ);
+  Serial.print(" |  ");
+  Serial.print(vState);
   Serial.print("   |  ");
-  Serial.print(digitalRead(relayHeatPin));
+  Serial.print(digitalRead(rHeatP));
   Serial.print("  |  ");
-  Serial.print(digitalRead(relayLightPin));
+  Serial.print(digitalRead(rLightP));
   Serial.print("  |  ");
-  Serial.print(humidState);
+  Serial.print(hState);
   Serial.print("  |  ");
-  Serial.print(uptime);
-  Serial.print("  |");  
-  Serial.print(serverMsg);
+  Serial.print(upTime);
+  Serial.print("  | ");
+  Serial.print(ms);
 }
