@@ -26,6 +26,7 @@ int minTmp = 25.5;
 int maxTmp = 27;
 int minHum = 70;
 int maxHum = 90;
+int maxCO2 = 200;
 int hState;
 int vState;
 int checkTemp = minTmp; // Check for temprature treshhold 
@@ -34,6 +35,7 @@ static unsigned long refrT = 0;
 String srvMsg = "None";
 int airQ;
 String ms;
+int defDel = 5000;
 
 void setup() {
   Serial.begin(9600);
@@ -58,22 +60,22 @@ void setup() {
   Serial.println("Ranges: \nTemp: " + String(minTmp) + "-" + String(maxTmp) + "\nHum: " + String(minHum) + "-" + String(maxHum));
   Serial.println("Test:\nCooler");
   digitalWrite(ventP, HIGH);
-  delay(5000);
+  delay(defDel);
   digitalWrite(ventP, LOW);
   Serial.println("Humidif");
   digitalWrite(humidP, HIGH);
-  delay(5000);
+  delay(defDel);
   digitalWrite(humidP, LOW);
   Serial.println("Light");
   digitalWrite(rLightP, HIGH);
-  delay(5000);
+  delay(defDel);
   digitalWrite(rLightP, LOW);
   Serial.println("Heat");
   digitalWrite(rHeatP, HIGH);
-  delay(5000);
+  delay(defDel);
   digitalWrite(rHeatP, LOW);
   delay(2000);
-  Serial.print("|   Date   |   Time   |  Temp |  Hum  | Air |Cooler| Heat|Light|Humid| Uptime |");
+  Serial.print("|  Date  |  Time  | Temp| Hum |Air|C|H|H|L|Uptime|");
 }
 
 void loop() {
@@ -85,14 +87,16 @@ void loop() {
   hum = dht.readHumidity(); // REMOVED DIFF COMPARING TO ANOTHER SENSOR
   airQ = analogRead(0);
 
-  if(millis() - refrT >= 20000) {
+  if(minCheck != now.minute()) {
+    handleNotifs();
+  }
+  if(millis() - refrT >= defDel * 2) { // every 20 sec
     calcUptime(now); // getting system Uptime and setting shift for M(inutes)
-    if(millis() - refrT >= 5000) {
-      handleNotifs();
+    if(millis() - refrT >= defDel) {
       handleParams(now);
       reloadPage();
     }
-    refrT += 20000;
+    refrT += defDel * 2;
   } 
 }
 
@@ -100,15 +104,15 @@ void handleNotifs() {
   String msg;
   if ((temp > 0.0) && (hum > 0.0)) {
     if (temp <= minTmp - 1.0) {
-      msg = "Low";
+      msg = " Low temp: " + String(temp);
     } else if (temp >= maxTmp + 1.0) {
-      msg = "High";
+      msg = "; High temp " + String(temp);
     }
-    if (msg.length() > 0 && (hum < minHum - 5.0)) { msg += String(" temp: " + String(temp)) + "; "; }
 
-    if (hum < minHum - 5.0) {
-      msg += String("Low hum: " + String(hum));
-    }
+    if (hum < minHum - 5.0) {msg += String("; Low hum: " + String(hum));}
+
+    if (airQ > maxCO2 + 10.0) {msg += String("; High CO2: " + String(airQ));}
+
   }  else {
     msg = "No data";
   }    
@@ -124,7 +128,7 @@ void handleParams(DateTime now) {
   if (hum < minHum) {
     digitalWrite(humidP, HIGH);
     hState = 1;
-    delay(8000);
+    delay(defDel * 2);
   } else if (now.minute() > 57) { // turn on humidif every hour
     digitalWrite(humidP, HIGH); 
     hState = 1;
@@ -140,7 +144,7 @@ void handleParams(DateTime now) {
       checkCool -= 1;
       delay(2000);
     }
-  } else if ((now.hour() == 07 or now.hour() == 16) and now.minute() == 57) { // turn on vent twice per day
+  } else if (((now.hour() == 07 or now.hour() == 16) and now.minute() == 57) or airQ > maxCO2) { // turn on vent twice per day
     digitalWrite(ventP, HIGH);
     vState = 1;  
   } else {
@@ -216,7 +220,7 @@ void reloadPage() {
 }
 
 void pushNotif(String msg) {
-  delay(3000);
+  delay(2000);
   EthernetClient client2;
   if (client2.connect(logSrv, 80)) {            
     String postStr = "devid=";
@@ -235,7 +239,7 @@ void pushNotif(String msg) {
     client2.print(postStr);
   }
   client2.stop();
-  delay(2000);
+  delay(defDel);
 }
 
 void calcUptime(DateTime now) {
@@ -244,26 +248,26 @@ void calcUptime(DateTime now) {
     minCheck = now.minute();
   }
   Serial.println();
-  Serial.print("| ");
+  Serial.print("|");
   Serial.print(date);
-  Serial.print(" | ");
+  Serial.print("|");
   Serial.print(curT);
-  Serial.print(" | ");
+  Serial.print("|");
   Serial.print(temp);
-  Serial.print(" | ");
+  Serial.print("|");
   Serial.print(hum);
-  Serial.print(" |  ");
+  Serial.print("|");
   Serial.print(airQ);
-  Serial.print(" |  ");
+  Serial.print("|");
   Serial.print(vState);
-  Serial.print("   |  ");
+  Serial.print("|");
   Serial.print(digitalRead(rHeatP));
-  Serial.print("  |  ");
-  Serial.print(digitalRead(rLightP));
-  Serial.print("  |  ");
+  Serial.print("|");
   Serial.print(hState);
-  Serial.print("  |  ");
+  Serial.print("|");
+  Serial.print(digitalRead(rLightP));
+  Serial.print("|");
   Serial.print(upTime);
-  Serial.print("  | ");
+  Serial.print("|");
   Serial.print(ms);
 }
