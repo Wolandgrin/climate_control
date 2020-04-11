@@ -13,7 +13,7 @@
 RTC_DS1307 RTC;
 DHT dht(9, DHTTYPE);
 EthernetServer srv(80);
-String devId = "vE88ABDC967551EF";// "vE88ABDC967551EF"; //or vFEEC96DE2707EDF
+String devId = "v6FDCEFE67CF6911";// "vE88ABDC967551EF"; // or "v6FDCEFE67CF6911" //or vFEEC96DE2707EDF
 const char* logSrv = "api.pushingbox.com";
 byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
 float temp;
@@ -22,7 +22,7 @@ char date [9];
 char curT [9];
 unsigned long upTime=0; // variable storing system uptime
 int minCheck; // check for minutes to count whole system uptime properly
-int minTmp = 25.5;
+int minTmp = 24;
 int maxTmp = 27;
 int minHum = 70;
 int maxHum = 90;
